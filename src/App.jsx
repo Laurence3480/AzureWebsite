@@ -1,163 +1,214 @@
-import React, { useState, useRef } from 'react';
+import React, { useRef, useState } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { OrbitControls, Float, MeshWobbleMaterial } from '@react-three/drei';
 
-export default function HealingHero() {
-  const cardRef = useRef(null);
-  const [rotate, setRotate] = useState({ x: 0, y: 0 });
-  const [glare, setGlare] = useState({ x: 50, y: 50, opacity: 0 });
-  const [isHovered, setIsHovered] = useState(false);
+// 3D 软萌核心模型组件：一个会呼吸、会 Q 弹变形的治愈系水晶球/小萌物
+function CuteFloatingMesh({ activePage }) {
+  const meshRef = useRef();
 
-  // 鼠标移动时计算 3D 倾斜角度与光斑位置
-  const handleMouseMove = (e) => {
-    if (!cardRef.current) return;
-    const rect = cardRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left; // 鼠标在卡片内的 X 坐标
-    const y = e.clientY - rect.top;  // 鼠标在卡片内的 Y 坐标
+  // 让模型随着时间缓缓自转
+  useFrame((state) => {
+    const t = state.clock.getElapsedTime();
+    meshRef.current.rotation.y = t * 0.3;
+    meshRef.current.rotation.z = Math.sin(t * 0.5) * 0.1;
+  });
 
-    const centerX = rect.width / 2;
-    const centerY = rect.height / 2;
+  return (
+    <Float speed={2} rotationIntensity={1} floatIntensity={2}>
+      <mesh ref={meshRef} scale={activePage ? 1.2 : 1}>
+        {/* 选用多面体或球体 */}
+        <icosahedronGeometry args={[1.5, 0]} />
+        {/* 带有治愈系果冻抖动质感的材质 */}
+        <MeshWobbleMaterial
+          color="#ff9a9e"
+          roughness={0.3}
+          metalness={0.2}
+          factor={0.4} // 软萌 Q 弹变形程度
+          speed={2}
+        />
+      </mesh>
+      {/* 旁边点缀几个小浮动球 */}
+      <mesh position={[2, 1, -1]} scale={0.4}>
+        <sphereGeometry args={[1, 32, 32]} />
+        <meshStandardMaterial color="#a1c4fd" roughness={0.2} />
+      </mesh>
+      <mesh position={[-2, -1, -0.5]} scale={0.5}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial color="#d4fc79" roughness={0.2} />
+      </mesh>
+    </Float>
+  );
+}
 
-    // 计算倾斜角度 (限制最大旋转 15 度)
-    const rotateX = ((y - centerY) / centerY) * -12;
-    const rotateY = ((x - centerX) / centerX) * 12;
-
-    // 计算光斑相对百分比
-    const glareX = (x / rect.width) * 100;
-    const glareY = (y / rect.height) * 100;
-
-    setRotate({ x: rotateX, y: rotateY });
-    setGlare({ x: glareX, y: glareY, opacity: 0.4 });
-  };
-
-  const handleMouseEnter = () => setIsHovered(true);
-
-  const handleMouseLeave = () => {
-    setIsHovered(false);
-    // 鼠标离开时复原，触发 cubic-bezier Q弹回弹
-    setRotate({ x: 0, y: 0 });
-    setGlare((prev) => ({ ...prev, opacity: 0 }));
-  };
+export default function App() {
+  const [currentMenu, setCurrentMenu] = useState('home');
 
   return (
     <div style={styles.container}>
-      {/* 2.5D 果冻卡片 */}
-      <div
-        ref={cardRef}
-        onMouseMove={handleMouseMove}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        style={{
-          ...styles.card,
-          transform: `perspective(1000px) rotateX(${rotate.x}deg) rotateY(${rotate.y}deg) scale3d(${isHovered ? 1.03 : 1}, ${isHovered ? 1.03 : 1}, 1)`,
-          transition: isHovered
-            ? 'transform 0.1s ease-out'
-            : 'transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)', // Q弹物理回弹
-        }}
-      >
-        {/* 光泽/高光图层 */}
-        <div
-          style={{
-            ...styles.glare,
-            background: `radial-gradient(circle at ${glare.x}% ${glare.y}%, rgba(255, 255, 255, 0.8) 0%, rgba(255, 220, 235, 0.2) 40%, transparent 80%)`,
-            opacity: glare.opacity,
-          }}
-        />
-
-        {/* 卡片内容 - 分层产生景深 */}
-        <div style={styles.content}>
-          <div style={styles.badge}>✨ Welcome World</div>
-          <h1 style={styles.title}>今天也是治愈的一天 ☁️</h1>
-          <p style={styles.subtitle}>点击或移动鼠标，探寻隐藏的奇妙微交互~</p>
+      {/* 背景 3D 渲染画布 */}
+      <div style={styles.canvasContainer}>
+        <Canvas camera={{ position: [0, 0, 6], fov: 50 }}>
+          <ambientLight intensity={0.8} />
+          <directionalLight position={[10, 10, 5]} intensity={1.5} />
+          <pointLight position={[-10, -10, -5]} intensity={0.5} color="#a1c4fd" />
           
-          {/* 交互按钮 */}
-          <button 
-            style={styles.button}
-            onClick={() => alert("获得了一个抱抱 (っº  º)っ ❤️")}
-          >
-            摸摸头 🌸
-          </button>
+          {/* 3D 软萌模型 */}
+          <CuteFloatingMesh activePage={currentMenu !== 'home'} />
+          
+          {/* 允许鼠标轻度旋转视角 */}
+          <OrbitControls enableZoom={false} enablePan={false} maxPolarAngle={Math.PI / 2 + 0.2} minPolarAngle={Math.PI / 2 - 0.2} />
+        </Canvas>
+      </div>
+
+      {/* 前端 UI：有趣的交互式开启菜单 */}
+      <div style={styles.uiOverlay}>
+        <header style={styles.header}>
+          <h1 style={styles.logo}>✨ Laurency's Space</h1>
+          <p style={styles.subtitle}>探索 3D 交互与极客视觉的治愈世界</p>
+        </header>
+
+        {/* 菜单控制台 */}
+        <div style={styles.menuCard}>
+          <div style={styles.menuTitle}>📌 开启控制台 (Control Panel)</div>
+          <div style={styles.buttonGroup}>
+            <button
+              style={{ ...styles.btn, background: currentMenu === 'home' ? '#ff9a9e' : 'rgba(255,255,255,0.7)' }}
+              onClick={() => setCurrentMenu('home')}
+            >
+              🏠 欢迎主页
+            </button>
+            <button
+              style={{ ...styles.btn, background: currentMenu === 'gallery' ? '#ff9a9e' : 'rgba(255,255,255,0.7)' }}
+              onClick={() => setCurrentMenu('gallery')}
+            >
+              📷 摄影画廊
+            </button>
+            <button
+              style={{ ...styles.btn, background: currentMenu === 'lab' ? '#ff9a9e' : 'rgba(255,255,255,0.7)' }}
+              onClick={() => setCurrentMenu('lab')}
+            >
+              🦾 硬件机械库
+            </button>
+            <button
+              style={{ ...styles.btn, background: currentMenu === 'notes' ? '#ff9a9e' : 'rgba(255,255,255,0.7)' }}
+              onClick={() => setCurrentMenu('notes')}
+            >
+              📝 数字花园
+            </button>
+          </div>
+
+          {/* 根据当前选择展示不同页面的动态内容 */}
+          <div style={styles.contentBox}>
+            {currentMenu === 'home' && (
+              <p>当前处于 3D 欢迎页。移动鼠标可旋转视角，点击上方菜单切换功能模块！☁️</p>
+            )}
+            {currentMenu === 'gallery' && (
+              <p>📸 摄影画廊页面：这里将展示你的胶片与数码大作（待开发）。</p>
+            )}
+            {currentMenu === 'lab' && (
+              <p>🦾 硬件机械库：展示 Delta 机器人、视觉算法与 3D 建模作品（待开发）。</p>
+            )}
+            {currentMenu === 'notes' && (
+              <p>📝 数字花园：记录你的开发心得与奇思妙想（待开发）。</p>
+            )}
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// 柔和治愈系样式
+// 样式定义
 const styles = {
   container: {
-    minHeight: '100vh',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    background: 'linear-gradient(135deg, #fef9d7 0%, #d2e9e6 100%)', // 奶黄与薄荷绿柔和渐变
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    overflow: 'hidden',
-  },
-  card: {
     position: 'relative',
-    width: '380px',
-    height: '480px',
-    borderRadius: '32px',
-    background: 'rgba(255, 255, 255, 0.65)',
-    backdropFilter: 'blur(20px)', // 磨砂玻璃质感
-    WebkitBackdropFilter: 'blur(20px)',
-    border: '2px solid rgba(255, 255, 255, 0.8)',
-    boxShadow: '0 20px 40px rgba(160, 180, 200, 0.25), inset 0 1px 2px rgba(255, 255, 255, 0.9)',
-    cursor: 'pointer',
-    transformStyle: 'preserve-3d',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: '40px',
-    boxSizing: 'border-box',
+    width: '100vw',
+    height: '100vh',
+    overflow: 'hidden',
+    background: 'linear-gradient(135deg, #fcefee 0%, #d8eefe 100% )',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
   },
-  glare: {
+  canvasContainer: {
     position: 'absolute',
     top: 0,
     left: 0,
     width: '100%',
     height: '100%',
-    borderRadius: '32px',
-    pointerEvents: 'none',
-    transition: 'opacity 0.3s ease',
+    zIndex: 1,
   },
-  content: {
-    transform: 'translateZ(40px)', // 在 3D 空间内向前浮起，营造景深
+  uiOverlay: {
+    position: 'relative',
+    zIndex: 2,
+    width: '100%',
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '40px',
+    boxSizing: 'border-box',
+    pointerEvents: 'none', // 让鼠标事件可以穿透到下方的 Canvas 旋转
+  },
+  header: {
     textAlign: 'center',
     pointerEvents: 'auto',
   },
-  badge: {
-    display: 'inline-block',
-    padding: '6px 16px',
-    borderRadius: '20px',
-    background: '#FFE5EC',
-    color: '#FF758F',
-    fontSize: '14px',
-    fontWeight: '600',
-    marginBottom: '20px',
-  },
-  title: {
-    fontSize: '26px',
-    color: '#4A4E69',
-    margin: '0 0 12px 0',
-    fontWeight: '700',
+  logo: {
+    fontSize: '32px',
+    color: '#4a4e69',
+    margin: '0 0 8px 0',
+    fontWeight: '800',
+    textShadow: '0 2px 10px rgba(255,255,255,0.8)',
   },
   subtitle: {
-    fontSize: '15px',
-    color: '#8D99AE',
-    margin: '0 0 32px 0',
-    lineHeight: '1.5',
-  },
-  button: {
-    padding: '12px 28px',
     fontSize: '16px',
-    fontWeight: '600',
-    color: '#FFF',
-    background: 'linear-gradient(135deg, #FF9A9E 0%, #FECFEF 100%)',
+    color: '#6c757d',
+    margin: 0,
+  },
+  menuCard: {
+    background: 'rgba(255, 255, 255, 0.65)',
+    backdropFilter: 'blur(20px)',
+    WebkitBackdropFilter: 'blur(20px)',
+    border: '2px solid rgba(255, 255, 255, 0.9)',
+    borderRadius: '24px',
+    padding: '24px 32px',
+    boxShadow: '0 20px 40px rgba(160, 180, 200, 0.2)',
+    width: '460px',
+    maxWidth: '90%',
+    textAlign: 'center',
+    pointerEvents: 'auto', // 确保按钮可以点击
+    marginBottom: '20px',
+  },
+  menuTitle: {
+    fontSize: '15px',
+    fontWeight: '700',
+    color: '#4a4e69',
+    marginBottom: '16px',
+  },
+  buttonGroup: {
+    display: 'flex',
+    gap: '10px',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    marginBottom: '20px',
+  },
+  btn: {
+    padding: '10px 16px',
+    borderRadius: '14px',
     border: 'none',
-    borderRadius: '20px',
-    boxShadow: '0 8px 15px rgba(255, 154, 158, 0.3)',
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#4a4e69',
     cursor: 'pointer',
-    transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+    boxShadow: '0 4px 10px rgba(0,0,0,0.05)',
+    transition: 'all 0.2s ease',
+  },
+  contentBox: {
+    fontSize: '14px',
+    color: '#555',
+    lineHeight: '1.5',
+    background: 'rgba(255,255,255,0.5)',
+    padding: '12px 16px',
+    borderRadius: '12px',
   },
 };
