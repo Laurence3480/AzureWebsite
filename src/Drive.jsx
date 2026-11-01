@@ -106,7 +106,13 @@ export default function Drive({ onClose }) {
           <h2>岛上仓库</h2>
           <span className="count">{groups ? `${total} 个文件` : ''}</span>
           {isOwner && (
-            <a className="ghost" href="island-upload://run" title="在本机弹出文件选择窗口并上传（需先运行 scripts/install-uploader.bat）">
+            <a
+              className="ghost"
+              href={`https://github.com/${REPO}/releases/edit/files`}
+              target="_blank"
+              rel="noopener"
+              title="打开 GitHub 页面，把文件拖进去即可（GitHub 自己负责登录）"
+            >
               上传
             </a>
           )}

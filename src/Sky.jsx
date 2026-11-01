@@ -146,13 +146,11 @@ const CLOUD_N = 28
 const SPAN = 75 // 云在视点周围 ±SPAN 的范围内循环，走远了会自然补上新的
 
 const cloudVert = /* glsl */ `
-  varying vec3 vN;
   varying vec3 vW;
   #include <fog_pars_vertex>
   void main() {
     vec4 wp = modelMatrix * vec4(position, 1.0);
     vW = wp.xyz;
-    vN = normalize(mat3(modelMatrix) * normal);
     vec4 mvPosition = viewMatrix * wp;
     gl_Position = projectionMatrix * mvPosition;
     #include <fog_vertex>
@@ -168,12 +166,13 @@ const cloudFrag = /* glsl */ `
   uniform float uSunK;
   uniform float uMoonK;
   uniform float uOpacity;
-  varying vec3 vN;
   varying vec3 vW;
   #include <fog_pars_fragment>
   void main() {
-    vec3 N = normalize(vN);
+    // 用屏幕空间导数求面法线：每个三角面一个明确的亮度，云就有了水晶般的几何切面
     vec3 V = normalize(cameraPosition - vW);
+    vec3 N = normalize(cross(dFdx(vW), dFdy(vW)));
+    if (dot(N, V) < 0.0) N = -N;
     float ndv = clamp(dot(N, V), 0.0, 1.0);
 
     // 受光：包裹式漫反射，让背光面也不至于死黑
@@ -189,7 +188,7 @@ const cloudFrag = /* glsl */ `
     float backM = pow(max(dot(-V, uMoonDir), 0.0), 3.0);
     col += uMoonCol * uMoonK * backM * (0.1 + 0.5 * rim);
 
-    float alpha = uOpacity * pow(ndv, 0.7);   // 边缘渐隐 = 蓬松
+    float alpha = uOpacity * (0.72 + 0.28 * pow(ndv, 0.6));
     gl_FragColor = vec4(col, alpha);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
@@ -198,7 +197,7 @@ const cloudFrag = /* glsl */ `
 `
 
 const MOON_TINT = new THREE.Color('#9db4ff')
-const cloudGeo = new THREE.IcosahedronGeometry(1, 2) // 细分 2：法线平滑，才有"软"的感觉
+const cloudGeo = new THREE.IcosahedronGeometry(1, 1) // 细分 1：80 个面，切面分明
 
 export function Clouds() {
   const controls = useThree((s) => s.controls)
@@ -217,7 +216,7 @@ export function Clouds() {
             uShade: { value: new THREE.Color() },
             uSunK: { value: 1 },
             uMoonK: { value: 0 },
-            uOpacity: { value: 0.9 },
+            uOpacity: { value: 0.92 },
           },
         ]),
         vertexShader: cloudVert,
