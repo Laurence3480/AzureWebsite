@@ -7,8 +7,12 @@ const qh = parseFloat(q.get('t'))
 export const clock = {
   hour: Number.isFinite(qh) ? qh : 17.3, // 默认停在黄昏；?t=小时 可指定并暂停
   auto: !Number.isFinite(qh),
-  speed: 24 / 150, // 每秒走多少"小时"，150 秒一整天
+  speed: 24 / 480, // 每秒走多少"小时"：8 分钟一整天
+  mul: 1, // 速度倍率
 }
+
+// 供界面调用的动作（由场景在挂载后注册）
+export const actions = {}
 
 // 每个关键时刻的色调：top 天顶 / hor 地平线 / amb 环境光 / water 海面
 const KEYS = [
@@ -87,13 +91,13 @@ export function updateMood(hour) {
 
 // ---- 低多边形工具 ----
 // 对相同坐标的顶点给出相同的抖动，保证网格接缝不裂开
-const hash3 = (x, y, z) => {
+export const hash3 = (x, y, z) => {
   const s = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453
   return s - Math.floor(s)
 }
 
 export function lowpoly(geo, { color, variance = 0.06, jitter = 0, jitterY = jitter, seed = 0 }) {
-  const g = geo.toNonIndexed()
+  const g = geo.index ? geo.toNonIndexed() : geo
   const pos = g.attributes.position
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i)

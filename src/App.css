@@ -282,3 +282,18 @@ input[type='range']::-moz-range-thumb {
   opacity: 0.65;
   white-space: nowrap;
 }
+
+.topbar {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  display: flex;
+  gap: 10px;
+}
+.topbar .drive-btn {
+  position: static;
+}
+.drive a.ghost {
+  text-decoration: none;
+  display: inline-block;
+}

@@ -1,14 +1,19 @@
 import { useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { mood } from './mood'
+import { seaMat } from './materials'
 
 export const SEA_Y = -7.6
+const SEG = 3.4
+const N = 76 // 76 * 3.4 = 258，覆盖到雾的尽头
 
+// 海面跟着视点走：位置按网格步长吸附，海浪用世界坐标计算，所以平移时波纹不会"游动"
 export function Sea({ onSeaClick }) {
   const mesh = useRef()
+  const controls = useThree((s) => s.controls)
   const geo = useMemo(() => {
-    const g = new THREE.PlaneGeometry(170, 170, 68, 68)
+    const g = new THREE.PlaneGeometry(SEG * N, SEG * N, N, N)
     g.rotateX(-Math.PI / 2)
     g.userData.base = g.attributes.position.array.slice()
     return g
@@ -16,23 +21,24 @@ export function Sea({ onSeaClick }) {
 
   useFrame((s) => {
     const t = s.clock.elapsedTime
+    const tgt = controls?.target
+    const ox = tgt ? Math.round(tgt.x / SEG) * SEG : 0
+    const oz = tgt ? Math.round(tgt.z / SEG) * SEG : 0
+    mesh.current.position.set(ox, SEA_Y, oz)
+
     const pos = geo.attributes.position
     const base = geo.userData.base
     for (let i = 0; i < pos.count; i++) {
-      const x = base[i * 3]
-      const z = base[i * 3 + 2]
+      const x = base[i * 3] + ox
+      const z = base[i * 3 + 2] + oz
       pos.setY(i, Math.sin(x * 0.32 + t * 0.9) * 0.14 + Math.cos(z * 0.41 + t * 0.7) * 0.14 + Math.sin((x + z) * 0.2 + t * 0.4) * 0.1)
     }
     pos.needsUpdate = true
-    mesh.current.material.color.copy(mood.water)
-    mesh.current.material.emissive.copy(mood.water).multiplyScalar(0.55 + mood.night * 0.25)
+    seaMat.color.copy(mood.water)
+    seaMat.emissive.copy(mood.water).multiplyScalar(0.4 + mood.night * 0.2)
   })
 
-  return (
-    <mesh ref={mesh} geometry={geo} position={[0, SEA_Y, 0]} onClick={onSeaClick}>
-      <meshStandardMaterial flatShading roughness={0.6} metalness={0} />
-    </mesh>
-  )
+  return <mesh ref={mesh} geometry={geo} material={seaMat} position={[0, SEA_Y, 0]} onClick={onSeaClick} />
 }
 
 export function Ripple({ x, z, onDone }) {

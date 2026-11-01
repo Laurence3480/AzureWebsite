@@ -3,16 +3,37 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { mood, makeGlowTexture } from './mood'
 
-export function Fireflies({ count = 38 }) {
-  const mat = useRef()
-  const tex = useMemo(() => makeGlowTexture(), [])
+// 所有岛共用一个材质，亮度统一随夜色变化
+let fireflyMat = null
+function getFireflyMat() {
+  if (!fireflyMat) {
+    fireflyMat = new THREE.PointsMaterial({
+      map: makeGlowTexture(),
+      color: new THREE.Color('#e8ff8a').multiplyScalar(2.2),
+      size: 0.3,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    })
+  }
+  return fireflyMat
+}
+export function updateFireflies(t) {
+  const m = getFireflyMat()
+  m.opacity = Math.min(1, mood.night * 1.25)
+  m.size = 0.3 + Math.sin(t * 2.2) * 0.04
+}
+
+// 萤火虫：围绕所在岛屿飞舞（坐标是岛屿局部坐标）
+export function Fireflies({ count = 12, radius = 3 }) {
   const { geo, seeds } = useMemo(() => {
     const seeds = Array.from({ length: count }, (_, i) => {
       const a = i * 2.399
-      const r = 1.2 + ((i * 37) % 25) / 8
+      const d = radius * (0.3 + (((i * 37) % 25) / 25) * 0.65)
       return {
-        cx: Math.cos(a) * r,
-        cz: Math.sin(a) * r,
+        cx: Math.cos(a) * d,
+        cz: Math.sin(a) * d,
         cy: 0.4 + ((i * 17) % 20) / 9,
         f: [0.3 + (i % 5) * 0.09, 0.4 + (i % 7) * 0.07, 0.25 + (i % 4) * 0.1],
         p: [i * 1.7, i * 2.9, i * 0.7],
@@ -21,9 +42,10 @@ export function Fireflies({ count = 38 }) {
     const g = new THREE.BufferGeometry()
     g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * 3), 3))
     return { geo: g, seeds }
-  }, [count])
+  }, [count, radius])
 
   useFrame((s) => {
+    if (mood.night < 0.04) return // 白天不更新，省性能
     const t = s.clock.elapsedTime
     const pos = geo.attributes.position
     seeds.forEach((d, i) => {
@@ -35,24 +57,10 @@ export function Fireflies({ count = 38 }) {
       )
     })
     pos.needsUpdate = true
-    mat.current.opacity = Math.min(1, mood.night * 1.25)
-    mat.current.size = 0.3 + Math.sin(t * 2.2) * 0.04
   })
 
-  return (
-    <points geometry={geo} frustumCulled={false}>
-      <pointsMaterial
-        ref={mat}
-        map={tex}
-        color={new THREE.Color('#e8ff8a').multiplyScalar(2.2)}
-        size={0.3}
-        transparent
-        depthWrite={false}
-        blending={THREE.AdditiveBlending}
-        toneMapped={false}
-      />
-    </points>
-  )
+  if (count <= 0) return null
+  return <points geometry={geo} material={getFireflyMat()} frustumCulled={false} />
 }
 
 // 点击天空放飞的孔明灯

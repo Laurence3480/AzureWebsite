@@ -7,6 +7,16 @@ const API = `https://api.github.com/repos/${REPO}/releases?per_page=100`
 const CACHE_KEY = 'drive-cache-v1'
 const CACHE_MS = 2 * 60 * 1000
 
+// 仅站长本机显示"上传"入口：访问一次 ?owner 即可记住
+const isOwner = (() => {
+  try {
+    if (new URLSearchParams(location.search).has('owner')) localStorage.setItem('island-owner', '1')
+    return localStorage.getItem('island-owner') === '1'
+  } catch {
+    return false
+  }
+})()
+
 const fmtSize = (n) => {
   if (n < 1024) return `${n} B`
   const u = ['KB', 'MB', 'GB', 'TB']
@@ -95,6 +105,11 @@ export default function Drive({ onClose }) {
         <header>
           <h2>岛上仓库</h2>
           <span className="count">{groups ? `${total} 个文件` : ''}</span>
+          {isOwner && (
+            <a className="ghost" href="island-upload://run" title="在本机弹出文件选择窗口并上传（需先运行 scripts/install-uploader.bat）">
+              上传
+            </a>
+          )}
           <button className="ghost" onClick={() => refresh(true)} title="重新读取">
             刷新
           </button>
