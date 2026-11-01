@@ -1,214 +1,148 @@
-import React, { useRef, useState } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Float, MeshWobbleMaterial } from '@react-three/drei';
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Canvas } from '@react-three/fiber'
+import { OrbitControls } from '@react-three/drei'
+import { Bloom, EffectComposer, ToneMapping, Vignette } from '@react-three/postprocessing'
+import { ToneMappingMode } from 'postprocessing'
+import { clock } from './mood'
+import { Rig, SkyDome, Stars, Clouds } from './Sky'
+import Island from './Island'
+import { Sea, Ripple } from './Sea'
+import { Fireflies, Lantern } from './Magic'
+import './App.css'
 
-// 3D 软萌核心模型组件：一个会呼吸、会 Q 弹变形的治愈系水晶球/小萌物
-function CuteFloatingMesh({ activePage }) {
-  const meshRef = useRef();
+let uid = 0
 
-  // 让模型随着时间缓缓自转
-  useFrame((state) => {
-    const t = state.clock.getElapsedTime();
-    meshRef.current.rotation.y = t * 0.3;
-    meshRef.current.rotation.z = Math.sin(t * 0.5) * 0.1;
-  });
+function World() {
+  const [ripples, setRipples] = useState([])
+  const [lanterns, setLanterns] = useState([])
+
+  const onSea = useCallback((e) => {
+    if (e.delta > 4) return // 拖动旋转视角时不算点击
+    setRipples((r) => [...r.slice(-6), { id: ++uid, x: e.point.x, z: e.point.z }])
+  }, [])
+
+  const onSky = useCallback((e) => {
+    if (e.delta > 4) return
+    setLanterns((l) => [
+      ...l.slice(-11),
+      { id: ++uid, x: (Math.random() - 0.5) * 3, y: 1.8 + Math.random() * 0.6, z: (Math.random() - 0.5) * 2.5 },
+    ])
+  }, [])
 
   return (
-    <Float speed={2} rotationIntensity={1} floatIntensity={2}>
-      <mesh ref={meshRef} scale={activePage ? 1.2 : 1}>
-        {/* 选用多面体或球体 */}
-        <icosahedronGeometry args={[1.5, 0]} />
-        {/* 带有治愈系果冻抖动质感的材质 */}
-        <MeshWobbleMaterial
-          color="#ff9a9e"
-          roughness={0.3}
-          metalness={0.2}
-          factor={0.4} // 软萌 Q 弹变形程度
-          speed={2}
+    <>
+      <Rig />
+      <SkyDome onSkyClick={onSky} />
+      <Stars />
+      <Clouds />
+      <Island />
+      <Sea onSeaClick={onSea} />
+      <Fireflies />
+      {ripples.map((r) => (
+        <Ripple key={r.id} x={r.x} z={r.z} onDone={() => setRipples((a) => a.filter((i) => i.id !== r.id))} />
+      ))}
+      {lanterns.map((l) => (
+        <Lantern key={l.id} x={l.x} y={l.y} z={l.z} onDone={() => setLanterns((a) => a.filter((i) => i.id !== l.id))} />
+      ))}
+      <OrbitControls
+        target={[0, -1.6, 0]}
+        enablePan={false}
+        enableDamping
+        dampingFactor={0.06}
+        minDistance={9}
+        maxDistance={24}
+        minPolarAngle={0.5}
+        maxPolarAngle={Math.PI / 2 - 0.04}
+        rotateSpeed={0.5}
+        autoRotate
+        autoRotateSpeed={0.25}
+      />
+      <EffectComposer multisampling={4}>
+        <Bloom intensity={0.9} luminanceThreshold={1} luminanceSmoothing={0.25} mipmapBlur />
+        <Vignette offset={0.32} darkness={0.5} />
+        <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+      </EffectComposer>
+    </>
+  )
+}
+
+const PRESETS = [
+  ['清晨', 6.6],
+  ['正午', 12],
+  ['黄昏', 17.4],
+  ['深夜', 23],
+]
+
+const fmt = (h) => {
+  const hh = Math.floor(h)
+  const mm = Math.floor((h - hh) * 60)
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
+}
+
+function Controls() {
+  const [hour, setHour] = useState(clock.hour)
+  const [auto, setAuto] = useState(clock.auto)
+  const dragging = useRef(false)
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!dragging.current) setHour(clock.hour)
+    }, 80)
+    return () => clearInterval(id)
+  }, [])
+
+  const set = (h) => {
+    clock.hour = h
+    setHour(h)
+  }
+
+  return (
+    <div className="panel" onPointerDown={(e) => e.stopPropagation()}>
+      <div className="row">
+        <span className="time">{fmt(hour)}</span>
+        <input
+          type="range"
+          min="0"
+          max="24"
+          step="0.01"
+          value={hour}
+          onPointerDown={() => (dragging.current = true)}
+          onPointerUp={() => (dragging.current = false)}
+          onChange={(e) => set(parseFloat(e.target.value) % 24)}
+          aria-label="时间"
         />
-      </mesh>
-      {/* 旁边点缀几个小浮动球 */}
-      <mesh position={[2, 1, -1]} scale={0.4}>
-        <sphereGeometry args={[1, 32, 32]} />
-        <meshStandardMaterial color="#a1c4fd" roughness={0.2} />
-      </mesh>
-      <mesh position={[-2, -1, -0.5]} scale={0.5}>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial color="#d4fc79" roughness={0.2} />
-      </mesh>
-    </Float>
-  );
+        <button
+          className={auto ? 'on' : ''}
+          onClick={() => {
+            clock.auto = !clock.auto
+            setAuto(clock.auto)
+          }}
+        >
+          {auto ? '流动中' : '已暂停'}
+        </button>
+      </div>
+      <div className="row presets">
+        {PRESETS.map(([name, h]) => (
+          <button key={name} onClick={() => set(h)}>
+            {name}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 export default function App() {
-  const [currentMenu, setCurrentMenu] = useState('home');
-
   return (
-    <div style={styles.container}>
-      {/* 背景 3D 渲染画布 */}
-      <div style={styles.canvasContainer}>
-        <Canvas camera={{ position: [0, 0, 6], fov: 50 }}>
-          <ambientLight intensity={0.8} />
-          <directionalLight position={[10, 10, 5]} intensity={1.5} />
-          <pointLight position={[-10, -10, -5]} intensity={0.5} color="#a1c4fd" />
-          
-          {/* 3D 软萌模型 */}
-          <CuteFloatingMesh activePage={currentMenu !== 'home'} />
-          
-          {/* 允许鼠标轻度旋转视角 */}
-          <OrbitControls enableZoom={false} enablePan={false} maxPolarAngle={Math.PI / 2 + 0.2} minPolarAngle={Math.PI / 2 - 0.2} />
-        </Canvas>
-      </div>
-
-      {/* 前端 UI：有趣的交互式开启菜单 */}
-      <div style={styles.uiOverlay}>
-        <header style={styles.header}>
-          <h1 style={styles.logo}>✨ Laurency's Space</h1>
-          <p style={styles.subtitle}>探索 3D 交互与极客视觉的治愈世界</p>
-        </header>
-
-        {/* 菜单控制台 */}
-        <div style={styles.menuCard}>
-          <div style={styles.menuTitle}>📌 开启控制台 (Control Panel)</div>
-          <div style={styles.buttonGroup}>
-            <button
-              style={{ ...styles.btn, background: currentMenu === 'home' ? '#ff9a9e' : 'rgba(255,255,255,0.7)' }}
-              onClick={() => setCurrentMenu('home')}
-            >
-              🏠 欢迎主页
-            </button>
-            <button
-              style={{ ...styles.btn, background: currentMenu === 'gallery' ? '#ff9a9e' : 'rgba(255,255,255,0.7)' }}
-              onClick={() => setCurrentMenu('gallery')}
-            >
-              📷 摄影画廊
-            </button>
-            <button
-              style={{ ...styles.btn, background: currentMenu === 'lab' ? '#ff9a9e' : 'rgba(255,255,255,0.7)' }}
-              onClick={() => setCurrentMenu('lab')}
-            >
-              🦾 硬件机械库
-            </button>
-            <button
-              style={{ ...styles.btn, background: currentMenu === 'notes' ? '#ff9a9e' : 'rgba(255,255,255,0.7)' }}
-              onClick={() => setCurrentMenu('notes')}
-            >
-              📝 数字花园
-            </button>
-          </div>
-
-          {/* 根据当前选择展示不同页面的动态内容 */}
-          <div style={styles.contentBox}>
-            {currentMenu === 'home' && (
-              <p>当前处于 3D 欢迎页。移动鼠标可旋转视角，点击上方菜单切换功能模块！☁️</p>
-            )}
-            {currentMenu === 'gallery' && (
-              <p>📸 摄影画廊页面：这里将展示你的胶片与数码大作（待开发）。</p>
-            )}
-            {currentMenu === 'lab' && (
-              <p>🦾 硬件机械库：展示 Delta 机器人、视觉算法与 3D 建模作品（待开发）。</p>
-            )}
-            {currentMenu === 'notes' && (
-              <p>📝 数字花园：记录你的开发心得与奇思妙想（待开发）。</p>
-            )}
-          </div>
-        </div>
-      </div>
+    <div className="app">
+      <Canvas shadows dpr={[1, 2]} camera={{ position: [10.5, 3.2, 12.5], fov: 42, near: 0.1, far: 400 }}>
+        <World />
+      </Canvas>
+      <header className="title">
+        <h1>漂浮小岛</h1>
+        <p>拖动旋转 · 点击天空放飞孔明灯 · 点击海面泛起涟漪</p>
+      </header>
+      <Controls />
     </div>
-  );
+  )
 }
-
-// 样式定义
-const styles = {
-  container: {
-    position: 'relative',
-    width: '100vw',
-    height: '100vh',
-    overflow: 'hidden',
-    background: 'linear-gradient(135deg, #fcefee 0%, #d8eefe 100% )',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-  },
-  canvasContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: '100%',
-    zIndex: 1,
-  },
-  uiOverlay: {
-    position: 'relative',
-    zIndex: 2,
-    width: '100%',
-    height: '100%',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '40px',
-    boxSizing: 'border-box',
-    pointerEvents: 'none', // 让鼠标事件可以穿透到下方的 Canvas 旋转
-  },
-  header: {
-    textAlign: 'center',
-    pointerEvents: 'auto',
-  },
-  logo: {
-    fontSize: '32px',
-    color: '#4a4e69',
-    margin: '0 0 8px 0',
-    fontWeight: '800',
-    textShadow: '0 2px 10px rgba(255,255,255,0.8)',
-  },
-  subtitle: {
-    fontSize: '16px',
-    color: '#6c757d',
-    margin: 0,
-  },
-  menuCard: {
-    background: 'rgba(255, 255, 255, 0.65)',
-    backdropFilter: 'blur(20px)',
-    WebkitBackdropFilter: 'blur(20px)',
-    border: '2px solid rgba(255, 255, 255, 0.9)',
-    borderRadius: '24px',
-    padding: '24px 32px',
-    boxShadow: '0 20px 40px rgba(160, 180, 200, 0.2)',
-    width: '460px',
-    maxWidth: '90%',
-    textAlign: 'center',
-    pointerEvents: 'auto', // 确保按钮可以点击
-    marginBottom: '20px',
-  },
-  menuTitle: {
-    fontSize: '15px',
-    fontWeight: '700',
-    color: '#4a4e69',
-    marginBottom: '16px',
-  },
-  buttonGroup: {
-    display: 'flex',
-    gap: '10px',
-    justifyContent: 'center',
-    flexWrap: 'wrap',
-    marginBottom: '20px',
-  },
-  btn: {
-    padding: '10px 16px',
-    borderRadius: '14px',
-    border: 'none',
-    fontSize: '14px',
-    fontWeight: '600',
-    color: '#4a4e69',
-    cursor: 'pointer',
-    boxShadow: '0 4px 10px rgba(0,0,0,0.05)',
-    transition: 'all 0.2s ease',
-  },
-  contentBox: {
-    fontSize: '14px',
-    color: '#555',
-    lineHeight: '1.5',
-    background: 'rgba(255,255,255,0.5)',
-    padding: '12px 16px',
-    borderRadius: '12px',
-  },
-};
