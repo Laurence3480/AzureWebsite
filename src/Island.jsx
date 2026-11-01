@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { lowpoly, mood } from './mood'
-import { landMat, windowMat, flowerMat } from './materials'
+import { landMat, windowMat, flowerMat, cabinMats } from './materials'
 import { Fireflies } from './Magic'
 
 // ---------- 可复用的树/石头模板（只建一次，每棵树克隆变换后合并进岛屿网格） ----------
@@ -14,18 +14,18 @@ function templates() {
   const pine = (v) => {
     const k = v * 7
     return [
-      lp(new THREE.CylinderGeometry(0.07, 0.11, 0.5, 5), '#8c6a54', 0, 0, 0.03).translate(0, 0.25, 0),
-      lp(new THREE.ConeGeometry(0.72, 0.8, 7), v ? '#5aae96' : '#5fb190', 0.03, k + 1).translate(0, 0.75, 0),
-      lp(new THREE.ConeGeometry(0.56, 0.75, 7), v ? '#63b89f' : '#68bb98', 0.03, k + 2).translate(0, 1.25, 0),
-      lp(new THREE.ConeGeometry(0.4, 0.7, 7), v ? '#6ec2a9' : '#74c5a2', 0.03, k + 3).translate(0, 1.75, 0),
+      lp(new THREE.CylinderGeometry(0.07, 0.11, 0.5, 4), '#8c6a54', 0, 0, 0.03).translate(0, 0.25, 0),
+      lp(new THREE.ConeGeometry(0.72, 0.8, 5), v ? '#5aae96' : '#5fb190', 0.03, k + 1).translate(0, 0.75, 0),
+      lp(new THREE.ConeGeometry(0.56, 0.75, 5), v ? '#63b89f' : '#68bb98', 0.03, k + 2).translate(0, 1.25, 0),
+      lp(new THREE.ConeGeometry(0.4, 0.7, 5), v ? '#6ec2a9' : '#74c5a2', 0.03, k + 3).translate(0, 1.75, 0),
     ]
   }
   const blossom = (v) => {
     const k = v * 7 + 20
     return [
-      lp(new THREE.CylinderGeometry(0.07, 0.13, 0.9, 5), '#8c6a54', 0, 0, 0.03).translate(0, 0.45, 0),
-      lp(new THREE.IcosahedronGeometry(0.8, 1), v ? '#ffa9c2' : '#ffb7cb', 0.07, k + 5).scale(1, 0.85, 1).translate(0, 1.25, 0),
-      lp(new THREE.IcosahedronGeometry(0.5, 1), v ? '#ffbdd0' : '#ffc9d8', 0.05, k + 6).translate(0.45, 0.95, 0.2),
+      lp(new THREE.CylinderGeometry(0.07, 0.13, 0.9, 4), '#8c6a54', 0, 0, 0.03).translate(0, 0.45, 0),
+      lp(new THREE.IcosahedronGeometry(0.85, 0), v ? '#ffa9c2' : '#ffb7cb', 0.09, k + 5, 0.08).scale(1, 0.85, 1).translate(0, 1.25, 0),
+      lp(new THREE.IcosahedronGeometry(0.55, 0), v ? '#ffbdd0' : '#ffc9d8', 0.06, k + 6, 0.08).translate(0.45, 0.95, 0.2),
     ]
   }
   const rock = (v) => [lp(new THREE.DodecahedronGeometry(0.3, 0), v ? '#a49cb4' : '#9a94ac', 0.04, 9 + v)]
@@ -48,30 +48,30 @@ function buildGeometry(spec) {
   const tp = templates()
   const out = []
 
-  const grass = lowpoly(new THREE.CylinderGeometry(r, r * 1.04, 0.45, 11, 1), {
+  const grass = lowpoly(new THREE.CylinderGeometry(r, r * 1.04, 0.45, 8, 1), {
     color: spec.grass,
-    variance: 0.05,
-    jitter: r * 0.045,
+    variance: 0.07,
+    jitter: r * 0.075,
     jitterY: 0.05,
     seed,
   })
   out.push(grass.translate(0, -0.225, 0))
 
-  const dirt = lowpoly(new THREE.CylinderGeometry(r * 1.04, r * 0.94, 0.7, 11, 1), {
+  const dirt = lowpoly(new THREE.CylinderGeometry(r * 1.04, r * 0.94, 0.7, 8, 1), {
     color: '#c79a76',
-    variance: 0.05,
-    jitter: r * 0.04,
+    variance: 0.07,
+    jitter: r * 0.07,
     jitterY: 0.04,
     seed: seed + 1,
   })
   out.push(dirt.translate(0, -0.8, 0))
 
-  const rockH = r * 1.28
-  const rock = lowpoly(new THREE.ConeGeometry(r * 0.96, rockH, 11, 3), {
+  const rockH = r * 1.5
+  const rock = lowpoly(new THREE.ConeGeometry(r * 0.96, rockH, 8, 2), {
     color: spec.rock,
-    variance: 0.07,
-    jitter: r * 0.095,
-    jitterY: r * 0.083,
+    variance: 0.09,
+    jitter: r * 0.17,
+    jitterY: r * 0.16,
     seed: seed + 2,
   })
   out.push(rock.rotateX(Math.PI).translate(0, -1.15 - rockH / 2, 0))
@@ -96,19 +96,19 @@ function Cabin({ cabin }) {
     <group position={[cabin.x, 0, cabin.z]} rotation={[0, cabin.rot, 0]}>
       <mesh position={[0, 0.55, 0]} castShadow receiveShadow>
         <boxGeometry args={[1.7, 1.1, 1.4]} />
-        <meshStandardMaterial color="#f6e2c8" flatShading roughness={0.9} />
+        <primitive object={cabinMats.wall} attach="material" />
       </mesh>
       <mesh position={[0, 1.5, 0]} rotation={[0, Math.PI / 4, 0]} scale={[1.3, 1, 1.0]} castShadow>
         <coneGeometry args={[1.25, 0.95, 4]} />
-        <meshStandardMaterial color="#e0786f" flatShading roughness={0.85} />
+        <primitive object={cabinMats.roof} attach="material" />
       </mesh>
       <mesh position={[0.5, 1.75, -0.2]} castShadow>
         <boxGeometry args={[0.24, 0.5, 0.24]} />
-        <meshStandardMaterial color="#b08c7c" flatShading />
+        <primitive object={cabinMats.chimney} attach="material" />
       </mesh>
       <mesh position={[-0.35, 0.33, 0.71]}>
         <boxGeometry args={[0.38, 0.66, 0.05]} />
-        <meshStandardMaterial color="#8c5c46" flatShading />
+        <primitive object={cabinMats.door} attach="material" />
       </mesh>
       <mesh position={[0.35, 0.62, 0.71]} material={windowMat}>
         <boxGeometry args={[0.38, 0.38, 0.05]} />

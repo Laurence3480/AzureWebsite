@@ -6,9 +6,9 @@ export const timeUniform = { value: 0 }
 export const landMat = new THREE.MeshStandardMaterial({
   flatShading: true,
   vertexColors: true,
-  roughness: 0.68,
+  roughness: 0.42,
   metalness: 0,
-  envMapIntensity: 0.4,
+  envMapIntensity: 0.5,
 })
 landMat.onBeforeCompile = (shader) => {
   shader.uniforms.uTime = timeUniform
@@ -39,10 +39,20 @@ export const seaMat = new THREE.MeshPhysicalMaterial({
   metalness: 0.1,
   ior: 1.7,
   specularIntensity: 1,
-  envMapIntensity: 1.0,
+  envMapIntensity: 0.8,
 })
 
-export const flowerMat = new THREE.MeshStandardMaterial({ flatShading: true, roughness: 0.6 })
+export const flowerMat = new THREE.MeshStandardMaterial({ flatShading: true, roughness: 0.3, envMapIntensity: 0.6 })
+
+// 小木屋：同样带光泽（像釉面的小玩具）
+const glossy = (color, roughness, envMapIntensity) =>
+  new THREE.MeshStandardMaterial({ color, flatShading: true, roughness, metalness: 0, envMapIntensity })
+export const cabinMats = {
+  wall: glossy('#f6e2c8', 0.45, 0.5),
+  roof: glossy('#e0786f', 0.3, 0.7),
+  door: glossy('#8c5c46', 0.5, 0.6),
+  chimney: glossy('#b08c7c', 0.45, 0.7),
+}
 
 // 需要接收天空反射的材质
-export const envMats = [landMat, windowMat, seaMat]
+export const envMats = [landMat, windowMat, seaMat, flowerMat, ...Object.values(cabinMats)]

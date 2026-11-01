@@ -140,38 +140,119 @@ function Stars() {
   )
 }
 
-// ---------- 云：半透明，太阳/月亮在云后面时，光会从云里透出来 ----------
-const CLOUD_N = 18
-const SPAN = 85 // 云在视点周围 ±SPAN 的范围内循环，走远了会自然补上新的
-const tmpDir = new THREE.Vector3()
-const tmpGlow = new THREE.Color()
+// ---------- 云：体积感软云（参考 MC 官方光影的质感） ----------
+// 边缘按视角柔和渐隐；受光面亮、背光面偏蓝灰；光源在云后面时，边缘透出光（逆光散射）。
+const CLOUD_N = 28
+const SPAN = 75 // 云在视点周围 ±SPAN 的范围内循环，走远了会自然补上新的
+
+const cloudVert = /* glsl */ `
+  varying vec3 vN;
+  varying vec3 vW;
+  #include <fog_pars_vertex>
+  void main() {
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vW = wp.xyz;
+    vN = normalize(mat3(modelMatrix) * normal);
+    vec4 mvPosition = viewMatrix * wp;
+    gl_Position = projectionMatrix * mvPosition;
+    #include <fog_vertex>
+  }
+`
+const cloudFrag = /* glsl */ `
+  uniform vec3 uSunDir;
+  uniform vec3 uMoonDir;
+  uniform vec3 uSunCol;
+  uniform vec3 uMoonCol;
+  uniform vec3 uLit;
+  uniform vec3 uShade;
+  uniform float uSunK;
+  uniform float uMoonK;
+  uniform float uOpacity;
+  varying vec3 vN;
+  varying vec3 vW;
+  #include <fog_pars_fragment>
+  void main() {
+    vec3 N = normalize(vN);
+    vec3 V = normalize(cameraPosition - vW);
+    float ndv = clamp(dot(N, V), 0.0, 1.0);
+
+    // 受光：包裹式漫反射，让背光面也不至于死黑
+    float s = dot(N, uSunDir) * 0.5 + 0.5;
+    float m = dot(N, uMoonDir) * 0.5 + 0.5;
+    float lit = clamp(s * s * uSunK + m * m * uMoonK * 0.6, 0.0, 1.0);
+    vec3 col = mix(uShade, uLit, 0.12 + 0.88 * lit);
+
+    // 逆光透射：光源在云的后方（相对相机）时，越靠边缘越亮
+    float back = pow(max(dot(-V, uSunDir), 0.0), 3.0);
+    float rim = pow(1.0 - ndv, 1.4);
+    col += uSunCol * uSunK * back * (0.28 + 1.1 * rim);
+    float backM = pow(max(dot(-V, uMoonDir), 0.0), 3.0);
+    col += uMoonCol * uMoonK * backM * (0.1 + 0.5 * rim);
+
+    float alpha = uOpacity * pow(ndv, 0.7);   // 边缘渐隐 = 蓬松
+    gl_FragColor = vec4(col, alpha);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+    #include <fog_fragment>
+  }
+`
+
 const MOON_TINT = new THREE.Color('#9db4ff')
+const cloudGeo = new THREE.IcosahedronGeometry(1, 2) // 细分 2：法线平滑，才有"软"的感觉
 
 export function Clouds() {
-  const camera = useThree((s) => s.camera)
   const controls = useThree((s) => s.controls)
   const refs = useRef([])
+  const mat = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        uniforms: THREE.UniformsUtils.merge([
+          THREE.UniformsLib.fog,
+          {
+            uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+            uMoonDir: { value: new THREE.Vector3(0, -1, 0) },
+            uSunCol: { value: new THREE.Color() },
+            uMoonCol: { value: new THREE.Color() },
+            uLit: { value: new THREE.Color() },
+            uShade: { value: new THREE.Color() },
+            uSunK: { value: 1 },
+            uMoonK: { value: 0 },
+            uOpacity: { value: 0.9 },
+          },
+        ]),
+        vertexShader: cloudVert,
+        fragmentShader: cloudFrag,
+        transparent: true,
+        depthWrite: false,
+        fog: true,
+      }),
+    [],
+  )
   const clouds = useMemo(() => {
     const rand = mulberry32(777)
-    return Array.from({ length: CLOUD_N }, (_, i) => ({
-      x: (rand() - 0.5) * SPAN * 2,
-      z: (rand() - 0.5) * SPAN * 2,
-      y: -3 + rand() * 12,
-      s: 1 + rand() * 1.4,
-      v: 0.15 + rand() * 0.25,
-      mat: new THREE.MeshLambertMaterial({ flatShading: true, transparent: true, opacity: 0.78, depthWrite: false }),
-      puffs: [0, 1, 2, 3, 4].map((k) => ({
-        x: (k - 2) * 0.9 + (rand() - 0.5) * 0.5,
-        y: Math.cos(k * 1.7 + i) * 0.25 + (k === 2 ? 0.35 : 0),
-        z: (rand() - 0.5) * 1.0,
-        s: 0.8 + rand() * 0.5 - (k === 0 || k === 4 ? 0.25 : 0),
-      })),
-    }))
+    return Array.from({ length: CLOUD_N }, () => {
+      const w = 2.2 + rand() * 2.2 // 云团长度
+      const n = 7 + Math.floor(rand() * 4)
+      return {
+        x: (rand() - 0.5) * SPAN * 2,
+        z: (rand() - 0.5) * SPAN * 2,
+        y: -7 + rand() * 11, // 集中在地平线附近的视野里
+        s: 1.1 + rand() * 1.5,
+        v: 0.12 + rand() * 0.22,
+        phase: rand() * 6.28,
+        // 中间大、两头小；整体压扁，底部更平
+        puffs: Array.from({ length: n }, (_, k) => {
+          const u = n === 1 ? 0 : k / (n - 1) - 0.5
+          const size = (1 - Math.abs(u) * 1.1) * (0.75 + rand() * 0.45)
+          return { x: u * w * 2, y: size * 0.25 + (rand() - 0.3) * 0.25, z: (rand() - 0.5) * 1.3, r: 0.55 + size * 0.7 }
+        }),
+      }
+    })
   }, [])
-  useEffect(() => () => clouds.forEach((c) => c.mat.dispose()), [clouds])
+  useEffect(() => () => mat.dispose(), [mat])
 
-  useFrame((s, dt) => {
-    dt = Math.min(dt, 0.1)
+  useFrame((s, delta) => {
+    const dt = Math.min(delta, 0.1)
     const tgt = controls?.target ?? ZERO
     const t = s.clock.elapsedTime
     clouds.forEach((c, i) => {
@@ -179,20 +260,20 @@ export function Clouds() {
       // 环绕视点循环
       c.x = tgt.x + ((((c.x - tgt.x + SPAN) % (SPAN * 2)) + SPAN * 2) % (SPAN * 2)) - SPAN
       c.z = tgt.z + ((((c.z - tgt.z + SPAN) % (SPAN * 2)) + SPAN * 2) % (SPAN * 2)) - SPAN
-      refs.current[i].position.set(c.x, c.y + Math.sin(t * 0.2 + i) * 0.25, c.z)
-
-      // 透光：光源在云的背面（相对相机）时，云被照亮
-      tmpDir.set(c.x, c.y, c.z).sub(camera.position).normalize() // 相机 → 云
-      const sunBack = Math.pow(Math.max(0, tmpDir.dot(mood.sunDir)), 3) * THREE.MathUtils.smoothstep(mood.sunDir.y, -0.08, 0.3)
-      const moonBack = Math.pow(Math.max(0, tmpDir.dot(mood.moonDir)), 3) * mood.night
-
-      c.mat.color.copy(mood.cloud)
-      c.mat.emissive.copy(mood.cloud).multiplyScalar(0.4)
-      tmpGlow.copy(mood.sunColor).multiplyScalar(sunBack * 0.95)
-      c.mat.emissive.add(tmpGlow)
-      tmpGlow.copy(MOON_TINT).multiplyScalar(moonBack * 0.3)
-      c.mat.emissive.add(tmpGlow)
+      refs.current[i].position.set(c.x, c.y + Math.sin(t * 0.2 + c.phase) * 0.3, c.z)
     })
+
+    const u = mat.uniforms
+    const sunUp = THREE.MathUtils.smoothstep(mood.sunDir.y, -0.08, 0.3)
+    u.uSunDir.value.copy(mood.sunDir)
+    u.uMoonDir.value.copy(mood.moonDir)
+    u.uSunCol.value.copy(mood.sunColor)
+    u.uMoonCol.value.copy(MOON_TINT)
+    u.uSunK.value = sunUp
+    u.uMoonK.value = mood.night
+    u.uLit.value.copy(mood.cloud).multiplyScalar(1.12)
+    // 背光面：取天空环境色，偏蓝灰（MC 光影里云底的颜色）
+    u.uShade.value.copy(mood.amb).lerp(mood.top, 0.4).multiplyScalar(0.62 * (0.4 + 0.6 * (1 - mood.night)))
   })
 
   return (
@@ -200,9 +281,7 @@ export function Clouds() {
       {clouds.map((c, i) => (
         <group key={i} ref={(el) => (refs.current[i] = el)} scale={c.s}>
           {c.puffs.map((p, k) => (
-            <mesh key={k} position={[p.x, p.y, p.z]} scale={[p.s * 1.25, p.s * 0.8, p.s]} material={c.mat}>
-              <icosahedronGeometry args={[0.9, 1]} />
-            </mesh>
+            <mesh key={k} geometry={cloudGeo} material={mat} position={[p.x, p.y, p.z]} scale={[p.r * 1.35, p.r * 0.78, p.r]} />
           ))}
         </group>
       ))}
