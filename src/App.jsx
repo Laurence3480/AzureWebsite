@@ -8,6 +8,7 @@ import { Rig, SkyDome, Stars, Clouds } from './Sky'
 import Island from './Island'
 import { Sea, Ripple } from './Sea'
 import { Fireflies, Lantern } from './Magic'
+import Drive from './Drive'
 import './App.css'
 
 let uid = 0
@@ -133,6 +134,12 @@ function Controls() {
 }
 
 export default function App() {
+  const [driveOpen, setDriveOpen] = useState(() => location.hash === '#drive')
+  const toggle = useCallback((open) => {
+    setDriveOpen(open)
+    history.replaceState(null, '', open ? '#drive' : location.pathname + location.search)
+  }, [])
+
   return (
     <div className="app">
       <Canvas shadows dpr={[1, 2]} camera={{ position: [10.5, 3.2, 12.5], fov: 42, near: 0.1, far: 400 }}>
@@ -142,7 +149,11 @@ export default function App() {
         <h1>漂浮小岛</h1>
         <p>拖动旋转 · 点击天空放飞孔明灯 · 点击海面泛起涟漪</p>
       </header>
+      <button className="drive-btn" onClick={() => toggle(true)} onPointerDown={(e) => e.stopPropagation()}>
+        岛上仓库
+      </button>
       <Controls />
+      {driveOpen && <Drive onClose={() => toggle(false)} />}
     </div>
   )
 }
